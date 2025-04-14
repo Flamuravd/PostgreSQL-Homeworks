@@ -1,95 +1,154 @@
-CREATE TABLE movies (
-    movie_id SERIAL PRIMARY KEY,
-    title VARCHAR(255) NOT NULL,
-    release_year INTEGER,
-    rating VARCHAR(10),
-    revenue BIGINT,
-    budget BIGINT,
-    duration INTEGER,
-    oscar_wins INTEGER DEFAULT 0
-);
+-- Homework 3 - Part 1
 
+-- 1. Find all genres with >3 'R'-rated movies
+SELECT g.genre_name, COUNT(*) AS movie_count
+FROM genres g
+JOIN movie_genres mg ON g.genre_id = mg.genre_id
+JOIN movies m ON mg.movie_id = m.movie_id
+WHERE m.rating = 'R'
+GROUP BY g.genre_name
+HAVING COUNT(*) > 3;
 
-CREATE TABLE genres (
-    genre_id SERIAL PRIMARY KEY,
-    genre_name VARCHAR(50) UNIQUE NOT NULL
-);
+-- 2. Directors with >500M total revenue and ≥2 movies
 
+SELECT d.director_name, SUM(m.revenue) AS total_revenue, COUNT(*) AS movie_count
+FROM directors d
+JOIN movie_directors md ON d.director_id = md.director_id
+JOIN movies m ON md.movie_id = m.movie_id
+GROUP BY d.director_name
+HAVING SUM(m.revenue) > 500000000 AND COUNT(*) >= 2;
 
-CREATE TABLE directors (
-    director_id SERIAL PRIMARY KEY,
-    director_name VARCHAR(100) NOT NULL
-);
+-- 3. Actors in >2 genres with ≥1 award
 
+SELECT a.actor_name, COUNT(DISTINCT g.genre_id) AS genre_count, a.awards_count
+FROM actors a
+JOIN movie_actors ma ON a.actor_id = ma.actor_id
+JOIN movie_genres mg ON ma.movie_id = mg.movie_id
+JOIN genres g ON mg.genre_id = g.genre_id
+WHERE a.awards_count >= 1
+GROUP BY a.actor_name, a.awards_count
+HAVING COUNT(DISTINCT g.genre_id) > 2;
 
-CREATE TABLE actors (
-    actor_id SERIAL PRIMARY KEY,
-    actor_name VARCHAR(100) NOT NULL,
-    awards_count INTEGER DEFAULT 0
-);
+-- 4. Movies with >3 reviews and avg rating >7
 
+SELECT m.title, AVG(r.rating) AS avg_rating, COUNT(*) AS review_count
+FROM movies m
+JOIN reviews r ON m.movie_id = r.movie_id
+GROUP BY m.title
+HAVING COUNT(*) > 3 AND AVG(r.rating) > 7;
 
-CREATE TABLE production_companies (
-    company_id SERIAL PRIMARY KEY,
-    company_name VARCHAR(100) NOT NULL
-);
+-- 5. Production companies investing >100M post-2015
 
+SELECT pc.company_name, SUM(m.budget) AS total_investment
+FROM production_companies pc
+JOIN movie_production_companies mpc ON pc.company_id = mpc.company_id
+JOIN movies m ON mpc.movie_id = m.movie_id
+WHERE m.release_year > 2015
+GROUP BY pc.company_name
+HAVING SUM(m.budget) > 100000000;
 
-CREATE TABLE locations (
-    location_id SERIAL PRIMARY KEY,
-    country_name VARCHAR(100) NOT NULL
-);
+-- 6. Countries with >2 movies filmed (total budget >150M)
 
-CREATE TABLE reviews (
-    review_id SERIAL PRIMARY KEY,
-    movie_id INTEGER REFERENCES movies(movie_id),
-    rating DECIMAL(3,1),
-    review_text TEXT
-);
+SELECT l.country_name, COUNT(*) AS movie_count, SUM(m.budget) AS total_budget
+FROM locations l
+JOIN movie_locations ml ON l.location_id = ml.location_id
+JOIN movies m ON ml.movie_id = m.movie_id
+GROUP BY l.country_name
+HAVING COUNT(*) > 2 AND SUM(m.budget) > 150000000;
 
+-- 7. Genres with avg duration >120m and ≥1 Oscar winner
 
-CREATE TABLE movie_genres (
-    movie_id INTEGER REFERENCES movies(movie_id),
-    genre_id INTEGER REFERENCES genres(genre_id),
-    PRIMARY KEY (movie_id, genre_id)
-);
+SELECT g.genre_name, AVG(m.duration_minutes) AS avg_duration
+FROM genres g
+JOIN movie_genres mg ON g.genre_id = mg.genre_id
+JOIN movies m ON mg.movie_id = m.movie_id
+JOIN movie_awards ma ON m.movie_id = ma.movie_id
+JOIN awards a ON ma.award_id = a.award_id
+WHERE a.award_name LIKE '%Oscar%'
+GROUP BY g.genre_name
+HAVING AVG(m.duration_minutes) > 120;
 
+-- 8. Years with >3 movies (avg budget >50M)
 
-CREATE TABLE movie_directors (
-    movie_id INTEGER REFERENCES movies(movie_id),
-    director_id INTEGER REFERENCES directors(director_id),
-    PRIMARY KEY (movie_id, director_id)
-);
+SELECT release_year, COUNT(*) AS movie_count, AVG(budget) AS avg_budget
+FROM movies
+GROUP BY release_year
+HAVING COUNT(*) > 3 AND AVG(budget) > 50000000;
 
-CREATE TABLE movie_actors (
-    movie_id INTEGER REFERENCES movies(movie_id),
-    actor_id INTEGER REFERENCES actors(actor_id),
-    role_type VARCHAR(20) DEFAULT 'supporting', 
-    PRIMARY KEY (movie_id, actor_id)
-);
+-- 9. Actors with >2 lead roles (total revenue >200M)
 
-CREATE TABLE movie_production_companies (
-    movie_id INTEGER REFERENCES movies(movie_id),
-    company_id INTEGER REFERENCES production_companies(company_id),
-    PRIMARY KEY (movie_id, company_id)
-);
+SELECT a.actor_name, COUNT(*) AS lead_role_count, SUM(m.revenue) AS total_revenue
+FROM actors a
+JOIN movie_actors ma ON a.actor_id = ma.actor_id
+JOIN movies m ON ma.movie_id = m.movie_id
+WHERE ma.role_type = 'lead'
+GROUP BY a.actor_name
+HAVING COUNT(*) > 2 AND SUM(m.revenue) > 200000000;
 
-CREATE TABLE movie_locations (
-    movie_id INTEGER REFERENCES movies(movie_id),
-    location_id INTEGER REFERENCES locations(location_id),
-    PRIMARY KEY (movie_id, location_id)
-);
+----------------------------------------------------------------------------------------------------
 
+-- Homework 3 - Part 2
 
-INSERT INTO genres (genre_name) VALUES 
-('Action'), ('Drama'), ('Comedy'), ('Sci-Fi'), ('Horror');
+-- 1. Top-rated movies view
 
-INSERT INTO movies (title, release_year, rating, revenue, budget, duration, oscar_wins) VALUES
-('Inception', 2010, 'PG-13', 836000000, 160000000, 148, 4),
-('The Dark Knight', 2008, 'R', 1005000000, 185000000, 152, 2),
-('Interstellar', 2014, 'PG-13', 677000000, 165000000, 169, 1),
-('Pulp Fiction', 1994, 'R', 214000000, 8000000, 154, 1),
-('Fight Club', 1999, 'R', 101000000, 63000000, 139, 0);
+CREATE VIEW top_rated_movies AS
+SELECT m.title, AVG(r.rating) AS avg_rating, COUNT(r.review_id) AS review_count, d.director_name
+FROM movies m
+JOIN reviews r ON m.movie_id = r.movie_id
+JOIN movie_directors md ON m.movie_id = md.movie_id
+JOIN directors d ON md.director_id = d.director_id
+GROUP BY m.title, d.director_name
+HAVING AVG(r.rating) >= 4.0;
 
-INSERT INTO directors (director_name) VALUES 
-('Christopher Nolan'), ('Quentin Tarantino'), ('David Fincher');
+-- 2. Movie financial performance view
+
+CREATE VIEW movie_financials AS
+SELECT 
+  title, 
+  budget, 
+  revenue, 
+  (revenue - budget) AS profit,
+  ROUND((revenue - budget) / NULLIF(budget, 0) * 100, 2) AS roi_percentage
+FROM movies;
+
+-- 3. Actor filmography view
+
+CREATE VIEW actor_filmography AS
+SELECT 
+  a.actor_name,
+  COUNT(DISTINCT ma.movie_id) AS movie_count,
+  STRING_AGG(DISTINCT g.genre_name, ', ') AS genres,
+  SUM(m.revenue) AS total_revenue
+FROM actors a
+JOIN movie_actors ma ON a.actor_id = ma.actor_id
+JOIN movies m ON ma.movie_id = m.movie_id
+JOIN movie_genres mg ON m.movie_id = mg.movie_id
+JOIN genres g ON mg.genre_id = g.genre_id
+GROUP BY a.actor_name;
+
+-- 4. Genre statistics view
+
+CREATE VIEW genre_stats AS
+SELECT 
+  g.genre_name,
+  COUNT(DISTINCT mg.movie_id) AS movie_count,
+  ROUND(AVG(r.rating), 1) AS avg_rating,
+  SUM(m.revenue) AS total_revenue
+FROM genres g
+JOIN movie_genres mg ON g.genre_id = mg.genre_id
+JOIN movies m ON mg.movie_id = m.movie_id
+LEFT JOIN reviews r ON m.movie_id = r.movie_id
+GROUP BY g.genre_name;
+
+-- 5. Production company performance view
+
+CREATE VIEW company_performance AS
+SELECT 
+  pc.company_name,
+  COUNT(DISTINCT mpc.movie_id) AS movie_count,
+  SUM(m.budget) AS total_investment,
+  SUM(m.revenue) AS total_revenue
+FROM production_companies pc
+JOIN movie_production_companies mpc ON pc.company_id = mpc.company_id
+JOIN movies m ON mpc.movie_id = m.movie_id
+GROUP BY pc.company_name;
